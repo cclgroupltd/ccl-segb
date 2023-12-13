@@ -27,7 +27,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-__version__ = "0.1"
+__version__ = "0.1.1"
 __description__ = "A python module to read SEGB v1 files found on iOS, macOS etc."
 __contact__ = "Alex Caithness"
 
@@ -40,7 +40,7 @@ COCOA_EPOCH = datetime.datetime(2001, 1, 1, 0, 0, 0)
 
 @dataclasses.dataclass(frozen=True)
 class Segb1Entry:
-    timstamp1: datetime.datetime
+    timestamp1: datetime.datetime
     timestamp2: datetime.datetime
     data_start_offset: int
     data: bytes
@@ -117,7 +117,7 @@ if __name__ == '__main__':
     for record in read_segb1_file(sys.argv[1]):
         print("=" * 72)
         print(f"Offset: {record.data_start_offset}")
-        print(f"Timestamp1: {record.timstamp1}")
+        print(f"Timestamp1: {record.timestamp1}")
         print(f"Timestamp2: {record.timestamp2}")
         print()
         print(bytes_to_hexview(record.data))
