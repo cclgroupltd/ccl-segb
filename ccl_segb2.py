@@ -33,7 +33,7 @@ import dataclasses
 import typing
 import datetime
 
-__version__ = "0.1"
+__version__ = "0.1.1"
 __description__ = "A python module to read SEGB v2 files found on iOS, macOS etc."
 __contact__ = "Alex Caithness"
 
@@ -99,7 +99,7 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
     header_raw = stream.read(HEADER_LENGTH)
     magic_number, entries_count, creation_timestamp_raw, unknown_padding = struct.unpack("<4sid16s", header_raw)
     if magic_number != MAGIC:
-        raise ValueError(f"Unexpected file magic. Expected: {MAGIC.hex()}; got: {magic_number}")
+        raise ValueError(f"Unexpected file magic. Expected: {MAGIC.hex()}; got: {magic_number.hex()}")
 
     creation_date = decode_cocoa_time(creation_timestamp_raw)  # nothing done with this at the moment...
 
