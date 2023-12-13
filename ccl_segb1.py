@@ -27,7 +27,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __description__ = "A python module to read SEGB v1 files found on iOS, macOS etc."
 __contact__ = "Alex Caithness"
 
@@ -85,7 +85,6 @@ def read_segb1_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb1Entry]:
 
     while stream.tell() < end_of_data_offset:
         record_header_raw = stream.read(RECORD_HEADER_LENGTH)
-        print(record_header_raw.hex())
         record_length, timestamp1_raw, timestamp2_raw = struct.unpack("<i4xdd", record_header_raw[:24])
         timestamp1 = decode_cocoa_time(timestamp1_raw)
         timestamp2 = decode_cocoa_time(timestamp2_raw)
