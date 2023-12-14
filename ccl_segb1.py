@@ -27,7 +27,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 __description__ = "A python module to read SEGB v1 files found on iOS, macOS etc."
 __contact__ = "Alex Caithness"
 
@@ -47,11 +47,30 @@ class Segb1Entry:
 
 
 def decode_cocoa_time(seconds) -> datetime.datetime:
+    """
+    Decodes a Cocoa/Mac Absolute timestamp
+
+    :param seconds: the timestamp value in seconds
+    :return: the decoded timestamp as a datetime.datetime
+    """
     return COCOA_EPOCH + datetime.timedelta(seconds=seconds)
 
 
-def bytes_to_hexview(b, width=16, show_offset=True, show_ascii=True,
-                     line_sep="\n", start_offset=0, max_bytes=-1):
+def bytes_to_hexview(b: bytes, width=16, show_offset=True, show_ascii=True,
+                     line_sep="\n", start_offset=0, max_bytes=-1) -> str:
+    """
+    Generates a hexview style string for the bytes object b
+
+    :param b: The data (as a bytes object) to be presented as a hexview
+    :param width: the width of each line of the hexview in bytes (16 by default)
+    :param show_offset: whether to show the offset on the left of the hexview (True by default)
+    :param show_ascii: whether to show the ASCII representation of the data on the right of the hexview (True by
+    default)
+    :param line_sep: string to separate each line of the hexview ('\n' by default)
+    :param start_offset: offset to start reading the data from (0 by default)
+    :param max_bytes: the maximum number of bytes to render as a hexview or -1 for all of the data (-1 by default)
+    :return: a hexview style string for the bytes object b
+    """
     line_fmt = ""
     if show_offset:
         line_fmt += "{offset:08x}: "
@@ -77,6 +96,11 @@ def bytes_to_hexview(b, width=16, show_offset=True, show_ascii=True,
 
 
 def read_segb1_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb1Entry]:
+    """
+    Reads SEGB v1 data from a stream and yields an iterable of Segb1Entry objects
+    :param stream: a binary stream containing the SEGB data. The data is assumed to begin at the start of the stream
+    :return: an iterable of Segb1Entry objects
+    """
     file_header = stream.read(HEADER_LENGTH)
     if len(file_header) != HEADER_LENGTH or file_header[-4:] != MAGIC:
         raise ValueError(f"Unexpected file magic. Expected: {MAGIC.hex()}; got: {file_header[-4:].hex()}")
@@ -100,6 +124,11 @@ def read_segb1_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb1Entry]:
 
 
 def read_segb1_file(path: pathlib.Path | os.PathLike | str) -> typing.Iterable[Segb1Entry]:
+    """
+    Reads SEGB v1 data from a file and yields an iterable of Segb1Entry objects
+    :param path: the path of the file to be opened
+    :return: an iterable of Segb1Entry objects
+    """
     path = pathlib.Path(path)
     with path.open("rb") as f:
         yield from read_segb1_stream(f)

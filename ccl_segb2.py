@@ -33,7 +33,7 @@ import dataclasses
 import typing
 import datetime
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __description__ = "A python module to read SEGB v2 files found on iOS, macOS etc."
 __contact__ = "Alex Caithness"
 
@@ -64,11 +64,30 @@ class Segb2Entry:
 
 
 def decode_cocoa_time(seconds) -> datetime.datetime:
+    """
+    Decodes a Cocoa/Mac Absolute timestamp
+
+    :param seconds: the timestamp value in seconds
+    :return: the decoded timestamp as a datetime.datetime
+    """
     return COCOA_EPOCH + datetime.timedelta(seconds=seconds)
 
 
 def bytes_to_hexview(b, width=16, show_offset=True, show_ascii=True,
-                     line_sep="\n", start_offset=0, max_bytes=-1):
+                     line_sep="\n", start_offset=0, max_bytes=-1) -> str:
+    """
+    Generates a hexview style string for the bytes object b
+
+    :param b: The data (as a bytes object) to be presented as a hexview
+    :param width: the width of each line of the hexview in bytes (16 by default)
+    :param show_offset: whether to show the offset on the left of the hexview (True by default)
+    :param show_ascii: whether to show the ASCII representation of the data on the right of the hexview (True by
+    default)
+    :param line_sep: string to separate each line of the hexview ('\n' by default)
+    :param start_offset: offset to start reading the data from (0 by default)
+    :param max_bytes: the maximum number of bytes to render as a hexview or -1 for all of the data (-1 by default)
+    :return: a hexview style string for the bytes object b
+    """
     line_fmt = ""
     if show_offset:
         line_fmt += "{offset:08x}: "
@@ -94,6 +113,11 @@ def bytes_to_hexview(b, width=16, show_offset=True, show_ascii=True,
 
 
 def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
+    """
+    Reads SEGB v2 data from a stream and yields an iterable of Segb2Entry objects
+    :param stream: a binary stream containing the SEGB data. The data is assumed to begin at the start of the stream
+    :return: an iterable of Segb1Entry objects
+    """
     trailer_list: list[EntryMetadata] = []
 
     header_raw = stream.read(HEADER_LENGTH)
@@ -136,6 +160,11 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
 
 
 def read_segb2_file(path: pathlib.Path | os.PathLike | str) -> typing.Iterable[Segb2Entry]:
+    """
+    Reads SEGB v2 data from a file and yields an iterable of Segb2Entry objects
+    :param path: the path of the file to be opened
+    :return: an iterable of Segb1Entry objects
+    """
     path = pathlib.Path(path)
     with path.open("rb") as f:
         yield from read_segb2_stream(f)
