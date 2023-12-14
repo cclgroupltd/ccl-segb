@@ -33,7 +33,7 @@ import dataclasses
 import typing
 import datetime
 
-__version__ = "0.1.2"
+__version__ = "0.2"
 __description__ = "A python module to read SEGB v2 files found on iOS, macOS etc."
 __contact__ = "Alex Caithness"
 
@@ -110,6 +110,37 @@ def bytes_to_hexview(b, width=16, show_offset=True, show_ascii=True,
         offset += width
 
     return line_sep.join(lines)
+
+
+def stream_matches_segbv2_signature(stream: typing.BinaryIO) -> bool:
+    """
+    Returns True if the stream contains data matching the SEGB v2 file signature. Resets the stream to the same position
+    before returning.
+
+    :param stream: The stream potentially containing SEGB v2 data
+    :return: True if the stream contains data matching the SEGB v2 file signature.
+    """
+    reset_offset = stream.tell()
+    file_header = stream.read(HEADER_LENGTH)
+    stream.seek(reset_offset, os.SEEK_SET)
+
+    if len(file_header) != HEADER_LENGTH or file_header[0:4] != MAGIC:
+        return False
+
+    return True
+
+
+def file_matches_segbv2_signature(path: pathlib.Path | os.PathLike | str) -> bool:
+    """
+    Returns True if the file at the given path contains data matching the SEGB v2 file signature. Resets the stream to
+    the same position before returning.
+
+    :param path: The path of the file potentially containing SEGB v2 data
+    :return: True if the stream contains data matching the SEGB v2 file signature.
+    """
+    path = pathlib.Path(path)
+    with path.open("rb") as f:
+        return stream_matches_segbv2_signature(f)
 
 
 def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
