@@ -4,6 +4,7 @@ import typing
 import dataclasses
 import pathlib
 import os
+import zlib
 
 """
 Copyright 2023, CCL Forensics
@@ -27,7 +28,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-__version__ = "0.2"
+__version__ = "0.3"
 __description__ = "A python module to read SEGB v1 files found on iOS, macOS etc."
 __contact__ = "Alex Caithness"
 
@@ -43,7 +44,13 @@ class Segb1Entry:
     timestamp1: datetime.datetime
     timestamp2: datetime.datetime
     data_start_offset: int
+    metadata_crc: int
+    actual_crc: int
     data: bytes
+
+    @property
+    def crc_passed(self):
+        return self.metadata_crc == self.actual_crc
 
 
 def decode_cocoa_time(seconds) -> datetime.datetime:
@@ -141,14 +148,17 @@ def read_segb1_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb1Entry]:
 
     while stream.tell() < end_of_data_offset:
         record_header_raw = stream.read(RECORD_HEADER_LENGTH)
-        record_length, timestamp1_raw, timestamp2_raw = struct.unpack("<i4xdd", record_header_raw[:24])
+        #record_length, timestamp1_raw, timestamp2_raw = struct.unpack("<i4xdd", record_header_raw[:24])
+        record_length, entry_state_raw, timestamp1_raw, timestamp2_raw, crc32_stored, unknown_raw = struct.unpack(
+            "<iiddIi", record_header_raw[:32])
         timestamp1 = decode_cocoa_time(timestamp1_raw)
         timestamp2 = decode_cocoa_time(timestamp2_raw)
 
         record_offset = stream.tell()
 
         data = stream.read(record_length)
-        yield Segb1Entry(timestamp1, timestamp2, record_offset, data)
+        calculated_crc32 = zlib.crc32(data)
+        yield Segb1Entry(timestamp1, timestamp2, record_offset, crc32_stored, calculated_crc32, data)
 
         # align to 8 bytes
         if (remainder := stream.tell() % ALIGNMENT_BYTES_LENGTH) != 0:

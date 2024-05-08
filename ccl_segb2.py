@@ -32,12 +32,14 @@ import enum
 import dataclasses
 import typing
 import datetime
+import zlib
 
-__version__ = "0.3"
+__version__ = "0.4"
 __description__ = "A python module to read SEGB v2 files found on iOS, macOS etc."
 __contact__ = "Alex Caithness"
 
 HEADER_LENGTH = 32
+ENTRY_HEADER_LENGTH = 8
 TRAILER_ENTRY_LENGTH = 16
 MAGIC = b"SEGB"
 COCOA_EPOCH = datetime.datetime(2001, 1, 1, 0, 0, 0)
@@ -51,6 +53,9 @@ class EntryState(enum.IntEnum):
 
 @dataclasses.dataclass(frozen=True)
 class EntryMetadata:
+    """
+    This class relates to the trailer structures
+    """
     metadata_offset: int
     end_offset: int
     state: EntryState
@@ -61,7 +66,17 @@ class EntryMetadata:
 class Segb2Entry:
     metadata: EntryMetadata
     data_start_offset: int
+    metadata_crc: int
+    actual_crc: int
     data: bytes
+
+    @property
+    def timestamp1(self) -> datetime:
+        return self.metadata.creation
+
+    @property
+    def crc_passed(self):
+        return self.metadata_crc == self.actual_crc
 
 
 def decode_cocoa_time(seconds) -> datetime.datetime:
@@ -175,7 +190,7 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
     stream.seek(HEADER_LENGTH, os.SEEK_SET)
 
     # go through the trailer list in order of offset:
-    trailer_list.sort(key= lambda x: x.end_offset)
+    trailer_list.sort(key=lambda x: x.end_offset)
     for trailer_entry in trailer_list:
         entry_offset = stream.tell()
 
@@ -183,12 +198,15 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
         entry_length = trailer_entry.end_offset - stream.tell() + HEADER_LENGTH
 
         entry_raw = stream.read(entry_length)
+        data = entry_raw[ENTRY_HEADER_LENGTH:]
+        crc32_stored, unknown_raw = struct.unpack("Ii", entry_raw[:ENTRY_HEADER_LENGTH])
+        crc32_calculated = calculated_crc = zlib.crc32(data)
 
         # align to 4 bytes
         if (remainder := trailer_entry.end_offset % 4) != 0:
             stream.seek(4 - remainder, os.SEEK_CUR)
 
-        yield Segb2Entry(trailer_entry, entry_offset, entry_raw)
+        yield Segb2Entry(trailer_entry, entry_offset, crc32_stored, calculated_crc, data)
 
 
 def read_segb2_file(path: pathlib.Path | os.PathLike | str) -> typing.Iterable[Segb2Entry]:
@@ -206,7 +224,7 @@ if __name__ == '__main__':
     import sys
 
     if len(sys.argv) < 2:
-        print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <SEG2 file>")
+        print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <SEGB2 file>")
         print()
         exit(1)
 
