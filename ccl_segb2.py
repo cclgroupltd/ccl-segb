@@ -28,11 +28,10 @@ SOFTWARE.
 import os
 import pathlib
 import struct
-import enum
 import dataclasses
 import typing
-import datetime
 import zlib
+from ccl_segb_common import *
 
 __version__ = "0.4"
 __description__ = "A python module to read SEGB v2 files found on iOS, macOS etc."
@@ -42,13 +41,6 @@ HEADER_LENGTH = 32
 ENTRY_HEADER_LENGTH = 8
 TRAILER_ENTRY_LENGTH = 16
 MAGIC = b"SEGB"
-COCOA_EPOCH = datetime.datetime(2001, 1, 1, 0, 0, 0)
-
-
-class EntryState(enum.IntEnum):
-    Written = 1
-    Deleted = 3
-    Unknown = 4
 
 
 @dataclasses.dataclass(frozen=True)
@@ -78,54 +70,12 @@ class Segb2Entry:
     def crc_passed(self):
         return self.metadata_crc == self.actual_crc
 
-
-def decode_cocoa_time(seconds) -> datetime.datetime:
-    """
-    Decodes a Cocoa/Mac Absolute timestamp
-
-    :param seconds: the timestamp value in seconds
-    :return: the decoded timestamp as a datetime.datetime
-    """
-    return COCOA_EPOCH + datetime.timedelta(seconds=seconds)
+    @property
+    def state(self):
+        return self.metadata.state
 
 
-def bytes_to_hexview(b, width=16, show_offset=True, show_ascii=True,
-                     line_sep="\n", start_offset=0, max_bytes=-1) -> str:
-    """
-    Generates a hexview style string for the bytes object b
 
-    :param b: The data (as a bytes object) to be presented as a hexview
-    :param width: the width of each line of the hexview in bytes (16 by default)
-    :param show_offset: whether to show the offset on the left of the hexview (True by default)
-    :param show_ascii: whether to show the ASCII representation of the data on the right of the hexview (True by
-    default)
-    :param line_sep: string to separate each line of the hexview ('\n' by default)
-    :param start_offset: offset to start reading the data from (0 by default)
-    :param max_bytes: the maximum number of bytes to render as a hexview or -1 for all of the data (-1 by default)
-    :return: a hexview style string for the bytes object b
-    """
-    line_fmt = ""
-    if show_offset:
-        line_fmt += "{offset:08x}: "
-    line_fmt += "{hex}"
-    if show_ascii:
-        line_fmt += " {ascii}"
-
-    b = b[start_offset:]
-    if max_bytes > -1:
-        b = b[:max_bytes]
-
-    offset = 0
-    lines = []
-    while offset < len(b):
-        chunk = b[offset:offset + width]
-        ascii = "".join(chr(x) if x >= 0x20 and x < 0x7f else "." for x in chunk)
-        hex = " ".join(format(x, "02x") for x in chunk).ljust(width * 3)
-        line = line_fmt.format(offset=offset, hex=hex, ascii=ascii)
-        lines.append(line)
-        offset += width
-
-    return line_sep.join(lines)
 
 
 def stream_matches_segbv2_signature(stream: typing.BinaryIO) -> bool:
@@ -220,6 +170,20 @@ def read_segb2_file(path: pathlib.Path | os.PathLike | str) -> typing.Iterable[S
         yield from read_segb2_stream(f)
 
 
+def run_command(filename):
+    for record in read_segb2_file(filename):
+        print("=" * 72)
+        print(f"Offset: {record.data_start_offset}")
+        print(f"Creation Timestamp: {record.metadata.creation}")
+        print(f"State: {record.metadata.state.name}")
+        if record.metadata.state == 1:
+            print(f"CRC Passed: {'True' if record.crc_passed else 'False'}")
+        print()
+        print(bytes_to_hexview(record.data))
+        print()
+    print("End of records")
+
+
 if __name__ == '__main__':
     import sys
 
@@ -228,13 +192,5 @@ if __name__ == '__main__':
         print()
         exit(1)
 
-    for record in read_segb2_file(sys.argv[1]):
-        print("=" * 72)
-        print(f"Offset: {record.data_start_offset}")
-        print(f"Creation Timestamp: {record.metadata.creation}")
-        print(f"State: {record.metadata.state.name}")
-        print()
-        print(bytes_to_hexview(record.data))
-        print()
-    print("End of records")
+    run_command(sys.argv[1])
     print()

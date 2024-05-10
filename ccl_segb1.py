@@ -5,6 +5,7 @@ import dataclasses
 import pathlib
 import os
 import zlib
+from ccl_segb_common import *
 
 """
 Copyright 2023, CCL Forensics
@@ -36,7 +37,6 @@ MAGIC = b"SEGB"
 HEADER_LENGTH = 56
 RECORD_HEADER_LENGTH = 32
 ALIGNMENT_BYTES_LENGTH = 8
-COCOA_EPOCH = datetime.datetime(2001, 1, 1, 0, 0, 0)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -47,59 +47,11 @@ class Segb1Entry:
     metadata_crc: int
     actual_crc: int
     data: bytes
+    state: EntryState
 
     @property
     def crc_passed(self):
         return self.metadata_crc == self.actual_crc
-
-
-def decode_cocoa_time(seconds) -> datetime.datetime:
-    """
-    Decodes a Cocoa/Mac Absolute timestamp
-
-    :param seconds: the timestamp value in seconds
-    :return: the decoded timestamp as a datetime.datetime
-    """
-    return COCOA_EPOCH + datetime.timedelta(seconds=seconds)
-
-
-def bytes_to_hexview(b: bytes, width=16, show_offset=True, show_ascii=True,
-                     line_sep="\n", start_offset=0, max_bytes=-1) -> str:
-    """
-    Generates a hexview style string for the bytes object b
-
-    :param b: The data (as a bytes object) to be presented as a hexview
-    :param width: the width of each line of the hexview in bytes (16 by default)
-    :param show_offset: whether to show the offset on the left of the hexview (True by default)
-    :param show_ascii: whether to show the ASCII representation of the data on the right of the hexview (True by
-    default)
-    :param line_sep: string to separate each line of the hexview ('\n' by default)
-    :param start_offset: offset to start reading the data from (0 by default)
-    :param max_bytes: the maximum number of bytes to render as a hexview or -1 for all of the data (-1 by default)
-    :return: a hexview style string for the bytes object b
-    """
-    line_fmt = ""
-    if show_offset:
-        line_fmt += "{offset:08x}: "
-    line_fmt += "{hex}"
-    if show_ascii:
-        line_fmt += " {ascii}"
-
-    b = b[start_offset:]
-    if max_bytes > -1:
-        b = b[:max_bytes]
-
-    offset = 0
-    lines = []
-    while offset < len(b):
-        chunk = b[offset:offset + width]
-        ascii = "".join(chr(x) if x >= 0x20 and x < 0x7f else "." for x in chunk)
-        hex = " ".join(format(x, "02x") for x in chunk).ljust(width * 3)
-        line = line_fmt.format(offset=offset, hex=hex, ascii=ascii)
-        lines.append(line)
-        offset += width
-
-    return line_sep.join(lines)
 
 
 def stream_matches_segbv1_signature(stream: typing.BinaryIO) -> bool:
@@ -148,7 +100,6 @@ def read_segb1_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb1Entry]:
 
     while stream.tell() < end_of_data_offset:
         record_header_raw = stream.read(RECORD_HEADER_LENGTH)
-        #record_length, timestamp1_raw, timestamp2_raw = struct.unpack("<i4xdd", record_header_raw[:24])
         record_length, entry_state_raw, timestamp1_raw, timestamp2_raw, crc32_stored, unknown_raw = struct.unpack(
             "<iiddIi", record_header_raw[:32])
         timestamp1 = decode_cocoa_time(timestamp1_raw)
@@ -158,7 +109,8 @@ def read_segb1_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb1Entry]:
 
         data = stream.read(record_length)
         calculated_crc32 = zlib.crc32(data)
-        yield Segb1Entry(timestamp1, timestamp2, record_offset, crc32_stored, calculated_crc32, data)
+        yield Segb1Entry(timestamp1, timestamp2, record_offset, crc32_stored, calculated_crc32, data,
+                         EntryState(entry_state_raw))
 
         # align to 8 bytes
         if (remainder := stream.tell() % ALIGNMENT_BYTES_LENGTH) != 0:
@@ -176,21 +128,27 @@ def read_segb1_file(path: pathlib.Path | os.PathLike | str) -> typing.Iterable[S
         yield from read_segb1_stream(f)
 
 
-if __name__ == '__main__':
-    import sys
-
-    if len(sys.argv) < 2:
-        print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <SEG2 file>")
-        print()
-        exit(1)
-
-    for record in read_segb1_file(sys.argv[1]):
+def run_command(filename):
+    for record in read_segb1_file(filename):
         print("=" * 72)
         print(f"Offset: {record.data_start_offset}")
         print(f"Timestamp1: {record.timestamp1}")
         print(f"Timestamp2: {record.timestamp2}")
+        if record.state == 1:
+            print(f"CRC Passed: {'True' if record.crc_passed else 'False'}")
         print()
         print(bytes_to_hexview(record.data))
         print()
     print("End of records")
+
+
+if __name__ == '__main__':
+    import sys
+
+    if len(sys.argv) < 2:
+        print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <SEGB1 file>")
+        print()
+        exit(1)
+
+    run_command(sys.argv[1])
     print()
