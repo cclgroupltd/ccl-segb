@@ -5,7 +5,7 @@ import dataclasses
 import pathlib
 import os
 import zlib
-from ccl_segb_common import *
+from ccl_segb_common import bytes_to_hexview, decode_cocoa_time, EntryState
 
 """
 Copyright 2023, CCL Forensics
@@ -48,6 +48,7 @@ class Segb1Entry:
     actual_crc: int
     data: bytes
     state: EntryState
+    _unknown_value: int = dataclasses.field(kw_only=True, compare=False)
 
     @property
     def crc_passed(self):
@@ -110,7 +111,8 @@ def read_segb1_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb1Entry]:
         data = stream.read(record_length)
         calculated_crc32 = zlib.crc32(data)
         yield Segb1Entry(timestamp1, timestamp2, record_offset, crc32_stored, calculated_crc32, data,
-                         EntryState(entry_state_raw))
+                                 EntryState(entry_state_raw), _unknown_value=unknown_raw)
+
 
         # align to 8 bytes
         if (remainder := stream.tell() % ALIGNMENT_BYTES_LENGTH) != 0:

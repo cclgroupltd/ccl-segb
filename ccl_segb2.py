@@ -30,8 +30,9 @@ import pathlib
 import struct
 import dataclasses
 import typing
+import datetime
 import zlib
-from ccl_segb_common import *
+from ccl_segb_common import bytes_to_hexview, decode_cocoa_time, EntryState
 
 __version__ = "0.4"
 __description__ = "A python module to read SEGB v2 files found on iOS, macOS etc."
@@ -61,6 +62,7 @@ class Segb2Entry:
     metadata_crc: int
     actual_crc: int
     data: bytes
+    _unknown_value: int = dataclasses.field(kw_only=True, compare=False)
 
     @property
     def timestamp1(self) -> datetime:
@@ -153,7 +155,7 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
         if (remainder := trailer_entry.end_offset % 4) != 0:
             stream.seek(4 - remainder, os.SEEK_CUR)
 
-        yield Segb2Entry(trailer_entry, entry_offset, crc32_stored, calculated_crc, data)
+        yield Segb2Entry(trailer_entry, entry_offset, crc32_stored, calculated_crc, data, _unknown_value=unknown_raw)
 
 
 def read_segb2_file(path: pathlib.Path | os.PathLike | str) -> typing.Iterable[Segb2Entry]:
