@@ -28,29 +28,27 @@ SOFTWARE.
 import os
 import pathlib
 import struct
-import enum
 import dataclasses
 import typing
 import datetime
+import zlib
+from ccl_segb_common import bytes_to_hexview, decode_cocoa_time, EntryState
 
-__version__ = "0.3"
+__version__ = "0.4"
 __description__ = "A python module to read SEGB v2 files found on iOS, macOS etc."
 __contact__ = "Alex Caithness"
 
 HEADER_LENGTH = 32
+ENTRY_HEADER_LENGTH = 8
 TRAILER_ENTRY_LENGTH = 16
 MAGIC = b"SEGB"
-COCOA_EPOCH = datetime.datetime(2001, 1, 1, 0, 0, 0)
-
-
-class EntryState(enum.IntEnum):
-    Written = 1
-    Deleted = 3
-    Unknown = 4
 
 
 @dataclasses.dataclass(frozen=True)
 class EntryMetadata:
+    """
+    This class relates to the trailer structures
+    """
     metadata_offset: int
     end_offset: int
     state: EntryState
@@ -61,56 +59,22 @@ class EntryMetadata:
 class Segb2Entry:
     metadata: EntryMetadata
     data_start_offset: int
+    metadata_crc: int
+    actual_crc: int
     data: bytes
+    _unknown_value: int = dataclasses.field(kw_only=True, compare=False)
 
+    @property
+    def timestamp1(self) -> datetime:
+        return self.metadata.creation
 
-def decode_cocoa_time(seconds) -> datetime.datetime:
-    """
-    Decodes a Cocoa/Mac Absolute timestamp
+    @property
+    def crc_passed(self):
+        return self.metadata_crc == self.actual_crc
 
-    :param seconds: the timestamp value in seconds
-    :return: the decoded timestamp as a datetime.datetime
-    """
-    return COCOA_EPOCH + datetime.timedelta(seconds=seconds)
-
-
-def bytes_to_hexview(b, width=16, show_offset=True, show_ascii=True,
-                     line_sep="\n", start_offset=0, max_bytes=-1) -> str:
-    """
-    Generates a hexview style string for the bytes object b
-
-    :param b: The data (as a bytes object) to be presented as a hexview
-    :param width: the width of each line of the hexview in bytes (16 by default)
-    :param show_offset: whether to show the offset on the left of the hexview (True by default)
-    :param show_ascii: whether to show the ASCII representation of the data on the right of the hexview (True by
-    default)
-    :param line_sep: string to separate each line of the hexview ('\n' by default)
-    :param start_offset: offset to start reading the data from (0 by default)
-    :param max_bytes: the maximum number of bytes to render as a hexview or -1 for all of the data (-1 by default)
-    :return: a hexview style string for the bytes object b
-    """
-    line_fmt = ""
-    if show_offset:
-        line_fmt += "{offset:08x}: "
-    line_fmt += "{hex}"
-    if show_ascii:
-        line_fmt += " {ascii}"
-
-    b = b[start_offset:]
-    if max_bytes > -1:
-        b = b[:max_bytes]
-
-    offset = 0
-    lines = []
-    while offset < len(b):
-        chunk = b[offset:offset + width]
-        ascii = "".join(chr(x) if x >= 0x20 and x < 0x7f else "." for x in chunk)
-        hex = " ".join(format(x, "02x") for x in chunk).ljust(width * 3)
-        line = line_fmt.format(offset=offset, hex=hex, ascii=ascii)
-        lines.append(line)
-        offset += width
-
-    return line_sep.join(lines)
+    @property
+    def state(self):
+        return self.metadata.state
 
 
 def stream_matches_segbv2_signature(stream: typing.BinaryIO) -> bool:
@@ -175,7 +139,7 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
     stream.seek(HEADER_LENGTH, os.SEEK_SET)
 
     # go through the trailer list in order of offset:
-    trailer_list.sort(key= lambda x: x.end_offset)
+    trailer_list.sort(key=lambda x: x.end_offset)
     for trailer_entry in trailer_list:
         entry_offset = stream.tell()
 
@@ -183,12 +147,15 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
         entry_length = trailer_entry.end_offset - stream.tell() + HEADER_LENGTH
 
         entry_raw = stream.read(entry_length)
+        data = entry_raw[ENTRY_HEADER_LENGTH:]
+        crc32_stored, unknown_raw = struct.unpack("Ii", entry_raw[:ENTRY_HEADER_LENGTH])
+        crc32_calculated = calculated_crc = zlib.crc32(data)
 
         # align to 4 bytes
         if (remainder := trailer_entry.end_offset % 4) != 0:
             stream.seek(4 - remainder, os.SEEK_CUR)
 
-        yield Segb2Entry(trailer_entry, entry_offset, entry_raw)
+        yield Segb2Entry(trailer_entry, entry_offset, crc32_stored, calculated_crc, data, _unknown_value=unknown_raw)
 
 
 def read_segb2_file(path: pathlib.Path | os.PathLike | str) -> typing.Iterable[Segb2Entry]:
@@ -202,21 +169,27 @@ def read_segb2_file(path: pathlib.Path | os.PathLike | str) -> typing.Iterable[S
         yield from read_segb2_stream(f)
 
 
-if __name__ == '__main__':
-    import sys
-
-    if len(sys.argv) < 2:
-        print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <SEG2 file>")
-        print()
-        exit(1)
-
-    for record in read_segb2_file(sys.argv[1]):
+def run_command(filename):
+    for record in read_segb2_file(filename):
         print("=" * 72)
         print(f"Offset: {record.data_start_offset}")
         print(f"Creation Timestamp: {record.metadata.creation}")
         print(f"State: {record.metadata.state.name}")
+        if record.metadata.state == 1:
+            print(f"CRC Passed: {'True' if record.crc_passed else 'False'}")
         print()
         print(bytes_to_hexview(record.data))
         print()
     print("End of records")
+
+
+if __name__ == '__main__':
+    import sys
+
+    if len(sys.argv) < 2:
+        print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <SEGB2 file>")
+        print()
+        exit(1)
+
+    run_command(sys.argv[1])
     print()
