@@ -130,8 +130,8 @@ def read_segb1_file(path: pathlib.Path | os.PathLike | str) -> typing.Iterable[S
         yield from read_segb1_stream(f)
 
 
-def run_command(filename):
-    for record in read_segb1_file(filename):
+def run_command(file_path: pathlib.Path | os.PathLike | str):
+    for record in read_segb1_file(file_path):
         print("=" * 72)
         print(f"Offset: {record.data_start_offset}")
         print(f"Timestamp1: {record.timestamp1}")

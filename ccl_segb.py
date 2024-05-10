@@ -19,19 +19,19 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-
+import os
 import pathlib
 import ccl_segb1
 import ccl_segb2
 
 
-def read_segb_file(filename):
-    if ccl_segb1.file_matches_segbv1_signature(filename):
-        return ccl_segb1.read_segb1_file(filename)
-    elif ccl_segb2.file_matches_segbv2_signature(filename):
-        return ccl_segb2.read_segb2_file(filename)
+def read_segb_file(file_path: pathlib.Path | os.PathLike | str):
+    if ccl_segb1.file_matches_segbv1_signature(file_path):
+        return ccl_segb1.read_segb1_file(file_path)
+    elif ccl_segb2.file_matches_segbv2_signature(file_path):
+        return ccl_segb2.read_segb2_file(file_path)
     else:
-        raise ValueError("File is not a SEGB File", filename)
+        raise ValueError("File is not a SEGB File", file_path)
 
 
 if __name__ == '__main__':
