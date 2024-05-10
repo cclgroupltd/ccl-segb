@@ -75,9 +75,6 @@ class Segb2Entry:
         return self.metadata.state
 
 
-
-
-
 def stream_matches_segbv2_signature(stream: typing.BinaryIO) -> bool:
     """
     Returns True if the stream contains data matching the SEGB v2 file signature. Resets the stream to the same position
