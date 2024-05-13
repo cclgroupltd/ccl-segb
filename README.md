@@ -48,7 +48,7 @@ for record in ccl_segb.read_segb_file(input_path):
 
 ```python
 import sys
-import ccl_segb1
+from ccl_segb import ccl_segb1
 
 input_path = sys.argv[1]
 
@@ -59,7 +59,7 @@ for record in ccl_segb1.read_segb1_file(input_path):
     data = record.data
     ts1 = record.timestamp1
     ts2 = record.timestamp2
-    
+
     print(offset, ts1, ts2)
     print(data.hex())
 ```

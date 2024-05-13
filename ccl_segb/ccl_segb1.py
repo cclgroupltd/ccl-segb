@@ -5,7 +5,7 @@ import dataclasses
 import pathlib
 import os
 import zlib
-from ccl_segb_common import bytes_to_hexview, decode_cocoa_time, EntryState
+from .ccl_segb_common import bytes_to_hexview, decode_cocoa_time, EntryState
 
 """
 Copyright 2023, CCL Forensics

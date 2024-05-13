@@ -32,7 +32,7 @@ import dataclasses
 import typing
 import datetime
 import zlib
-from ccl_segb_common import bytes_to_hexview, decode_cocoa_time, EntryState
+from .ccl_segb_common import bytes_to_hexview, decode_cocoa_time, EntryState
 
 __version__ = "0.4"
 __description__ = "A python module to read SEGB v2 files found on iOS, macOS etc."
