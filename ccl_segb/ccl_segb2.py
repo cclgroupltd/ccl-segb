@@ -143,6 +143,10 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
     for trailer_entry in trailer_list:
         entry_offset = stream.tell()
 
+        # State 4 is an empty record
+        if trailer_entry.state == 4:
+            continue
+
         # NB end offset is relative to the start of entry area
         entry_length = trailer_entry.end_offset - stream.tell() + HEADER_LENGTH
 
