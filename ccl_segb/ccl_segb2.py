@@ -32,7 +32,7 @@ import dataclasses
 import typing
 import datetime
 import zlib
-from ccl_segb_common import bytes_to_hexview, decode_cocoa_time, EntryState
+from .ccl_segb_common import bytes_to_hexview, decode_cocoa_time, EntryState
 
 __version__ = "0.4"
 __description__ = "A python module to read SEGB v2 files found on iOS, macOS etc."
@@ -142,6 +142,10 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
     trailer_list.sort(key=lambda x: x.end_offset)
     for trailer_entry in trailer_list:
         entry_offset = stream.tell()
+
+        # State 4 is an empty record
+        if trailer_entry.state == 4:
+            continue
 
         # NB end offset is relative to the start of entry area
         entry_length = trailer_entry.end_offset - stream.tell() + HEADER_LENGTH
