@@ -2,20 +2,14 @@
 This repo contains Python modules for parsing SEGB (v1 and v2) files and a generic module to automatically determine which to parse based on it's header.
 
 ## CLI
-All modules may be invoked from the command-line for dumping / previewing 
-SEGB files
+A command-line tool is provided for dumping / previewing SEGB files. 
+
+This tool assumes that either the whole structure of this repo has 
+been downloaded or that the module has been installed using pip. 
 
 ### Example usage
 ```commandline
-python ccl_segb.py <segb1 or segb2 filename>
-```
-or
-```commandline
-python ccl_segb1.py <segb1 filename>
-```
-or
-```commandline
-python ccl_segb2.py <segb2 filename>
+python ccl_segb_cli.py <path to segb1 or segb2 file>
 ```
 
 ## ccl_segb
@@ -70,7 +64,7 @@ for record in ccl_segb1.read_segb1_file(input_path):
 
 ```python
 import sys
-import ccl_segb2
+from ccl_segb import ccl_segb2
 
 input_path = sys.argv[1]
 

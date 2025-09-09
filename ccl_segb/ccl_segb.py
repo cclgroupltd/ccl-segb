@@ -1,5 +1,5 @@
 """
-Copyright 2023, CCL Forensics
+Copyright 2023-2025, CCL Forensics
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -34,21 +34,3 @@ def read_segb_file(file_path: pathlib.Path | os.PathLike | str):
         raise ValueError("File is not a SEGB File", file_path)
 
 
-if __name__ == '__main__':
-    import sys
-
-    if len(sys.argv) < 2:
-        print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <SEGB file>")
-        print()
-        exit(1)
-
-    if ccl_segb1.file_matches_segbv1_signature(sys.argv[1]):
-        print("Processing SEGB1 File")
-        ccl_segb1.run_command(sys.argv[1])
-    elif ccl_segb2.file_matches_segbv2_signature(sys.argv[1]):
-        print("Processing SEGB2 File")
-        ccl_segb2.run_command(sys.argv[1])
-    else:
-        print(f"File is not a SEGB File")
-        exit(1)
-    print()
