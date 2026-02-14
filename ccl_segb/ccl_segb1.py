@@ -1,12 +1,3 @@
-import datetime
-import struct
-import typing
-import dataclasses
-import pathlib
-import os
-import zlib
-from .ccl_segb_common import bytes_to_hexview, decode_cocoa_time, EntryState
-
 """
 Copyright 2023, CCL Forensics
 
@@ -29,14 +20,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-__version__ = "0.3"
-__description__ = "A python module to read SEGB v1 files found on iOS, macOS etc."
-__contact__ = "Alex Caithness"
+import dataclasses
+import datetime
+import os
+import pathlib
+import struct
+import typing
+import zlib
 
-MAGIC = b"SEGB"
-HEADER_LENGTH = 56
-RECORD_HEADER_LENGTH = 32
-ALIGNMENT_BYTES_LENGTH = 8
+from .ccl_segb_common import MAGIC, MAGIC_SIZE, EntryState, decode_cocoa_time
+
+# SEGB v1 File Format Constants
+# Structure: [56-byte Header][Records with 32-byte headers + data + 8-byte alignment padding]
+HEADER_LENGTH = 56            # File header size containing end_of_data_offset and magic
+RECORD_HEADER_LENGTH = 32     # Each record's header: length, state, timestamps, CRC
+ALIGNMENT_BYTES_LENGTH = 8    # Records padded to 8-byte boundaries
 
 
 @dataclasses.dataclass(frozen=True)
@@ -67,7 +65,7 @@ def stream_matches_segbv1_signature(stream: typing.BinaryIO) -> bool:
     file_header = stream.read(HEADER_LENGTH)
     stream.seek(reset_offset, os.SEEK_SET)
 
-    if len(file_header) != HEADER_LENGTH or file_header[-4:] != MAGIC:
+    if len(file_header) != HEADER_LENGTH or file_header[-MAGIC_SIZE:] != MAGIC:
         return False
 
     # TODO: consider whether we should check the end of data offset is less than the stream's size?
@@ -94,15 +92,17 @@ def read_segb1_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb1Entry]:
     :return: an iterable of Segb1Entry objects
     """
     file_header = stream.read(HEADER_LENGTH)
-    if len(file_header) != HEADER_LENGTH or file_header[-4:] != MAGIC:
-        raise ValueError(f"Unexpected file magic. Expected: {MAGIC.hex()}; got: {file_header[-4:].hex()}")
+    if len(file_header) != HEADER_LENGTH or file_header[-MAGIC_SIZE:] != MAGIC:
+        raise ValueError(f"Unexpected file magic. Expected: {MAGIC.hex()}; got: {file_header[-MAGIC_SIZE:].hex()}")
 
-    end_of_data_offset, = struct.unpack("<I", file_header[0:4])
+    # Parse first 4 bytes as little-endian unsigned int (<I), then unpack the single-element tuple with trailing comma
+    end_of_data_offset, = struct.unpack("<I", file_header[0:MAGIC_SIZE])
 
     while stream.tell() < end_of_data_offset:
         record_header_raw = stream.read(RECORD_HEADER_LENGTH)
+        # Parse 32-byte record header: <iiddIi = little-endian: int(4), int(4), double(8), double(8), uint(4), int(4)
         record_length, entry_state_raw, timestamp1_raw, timestamp2_raw, crc32_stored, unknown_raw = struct.unpack(
-            "<iiddIi", record_header_raw[:32])
+            "<iiddIi", record_header_raw[:RECORD_HEADER_LENGTH])
         timestamp1 = decode_cocoa_time(timestamp1_raw)
         timestamp2 = decode_cocoa_time(timestamp2_raw)
 
@@ -129,28 +129,3 @@ def read_segb1_file(path: pathlib.Path | os.PathLike | str) -> typing.Iterable[S
     with path.open("rb") as f:
         yield from read_segb1_stream(f)
 
-
-def run_command(file_path: pathlib.Path | os.PathLike | str):
-    for record in read_segb1_file(file_path):
-        print("=" * 72)
-        print(f"Offset: {record.data_start_offset}")
-        print(f"Timestamp1: {record.timestamp1}")
-        print(f"Timestamp2: {record.timestamp2}")
-        if record.state == 1:
-            print(f"CRC Passed: {'True' if record.crc_passed else 'False'}")
-        print()
-        print(bytes_to_hexview(record.data))
-        print()
-    print("End of records")
-
-
-if __name__ == '__main__':
-    import sys
-
-    if len(sys.argv) < 2:
-        print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <SEGB1 file>")
-        print()
-        exit(1)
-
-    run_command(sys.argv[1])
-    print()
