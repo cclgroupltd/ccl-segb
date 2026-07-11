@@ -131,15 +131,22 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
         meta_offset = stream.tell()
         trailer_entry_raw = stream.read(TRAILER_ENTRY_LENGTH)
         entry_end_offset, entry_state_raw, entry_timestamp_raw = struct.unpack("<2id", trailer_entry_raw)
+        try:
+            entry_state = EntryState(entry_state_raw)
+        except ValueError:
+            # Some SEGB v2 files contain zeroed/unused trailer slots (state 0,
+            # end offset 0); they reference no record data, so skip them.
+            continue
         trailer_list.append(
             EntryMetadata(
-                meta_offset, entry_end_offset, EntryState(entry_state_raw), decode_cocoa_time(entry_timestamp_raw)))
+                meta_offset, entry_end_offset, entry_state, decode_cocoa_time(entry_timestamp_raw)))
 
     # To read the records, in order, get to the end of the header:
     stream.seek(HEADER_LENGTH, os.SEEK_SET)
 
     # go through the trailer list in order of offset:
     trailer_list.sort(key=lambda x: x.end_offset)
+    previous_entry: typing.Optional[Segb2Entry] = None
     for trailer_entry in trailer_list:
         entry_offset = stream.tell()
 
@@ -147,8 +154,21 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
         if trailer_entry.state == 4:
             continue
 
+        # Two trailer entries can share an end offset (e.g. a record that was
+        # written and later marked deleted); both reference the same data
+        # region, which has already been read from the stream.
+        if previous_entry is not None and trailer_entry.end_offset == previous_entry.metadata.end_offset:
+            yield dataclasses.replace(previous_entry, metadata=trailer_entry)
+            continue
+
         # NB end offset is relative to the start of entry area
         entry_length = trailer_entry.end_offset - stream.tell() + HEADER_LENGTH
+
+        # Stale trailer entries (e.g. left behind after the data area was
+        # reused) can point inside a region already consumed by a newer
+        # record; their original data is gone, so they cannot be read.
+        if entry_length < ENTRY_HEADER_LENGTH:
+            continue
 
         entry_raw = stream.read(entry_length)
         data = entry_raw[ENTRY_HEADER_LENGTH:]
@@ -159,7 +179,8 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
         if (remainder := trailer_entry.end_offset % 4) != 0:
             stream.seek(4 - remainder, os.SEEK_CUR)
 
-        yield Segb2Entry(trailer_entry, entry_offset, crc32_stored, calculated_crc, data, _unknown_value=unknown_raw)
+        previous_entry = Segb2Entry(trailer_entry, entry_offset, crc32_stored, calculated_crc, data, _unknown_value=unknown_raw)
+        yield previous_entry
 
 
 def read_segb2_file(path: pathlib.Path | os.PathLike | str) -> typing.Iterable[Segb2Entry]:
