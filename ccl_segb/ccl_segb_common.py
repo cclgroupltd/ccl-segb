@@ -1,14 +1,17 @@
-import enum
 import datetime
-
+import enum
 
 COCOA_EPOCH = datetime.datetime(2001, 1, 1, 0, 0, 0)
+MAGIC = b"SEGB"                # SEGB file signature used by both v1 and v2
+MAGIC_SIZE = 4                 # Size of SEGB magic signature in bytes
+ASCII_PRINTABLE_START = 0x20   # Start of printable ASCII range (space)
+ASCII_PRINTABLE_END = 0x7f     # End of printable ASCII range (DEL)
 
 
 class EntryState(enum.IntEnum):
     Written = 1
     Deleted = 3
-    Unknown = 4
+    Empty = 4  # Empty record (v2 only)
 
 
 def decode_cocoa_time(seconds) -> datetime.datetime:
@@ -51,7 +54,7 @@ def bytes_to_hexview(b, width=16, show_offset=True, show_ascii=True,
     lines = []
     while offset < len(b):
         chunk = b[offset:offset + width]
-        ascii = "".join(chr(x) if x >= 0x20 and x < 0x7f else "." for x in chunk)
+        ascii = "".join(chr(x) if x >= ASCII_PRINTABLE_START and x < ASCII_PRINTABLE_END else "." for x in chunk)
         hex = " ".join(format(x, "02x") for x in chunk).ljust(width * 3)
         line = line_fmt.format(offset=offset, hex=hex, ascii=ascii)
         lines.append(line)

@@ -25,23 +25,23 @@ SOFTWARE.
 # Thank you for posting the research!
 
 
+import dataclasses
+import datetime
 import os
 import pathlib
 import struct
-import dataclasses
 import typing
-import datetime
 import zlib
-from .ccl_segb_common import bytes_to_hexview, decode_cocoa_time, EntryState
 
-__version__ = "0.4"
-__description__ = "A python module to read SEGB v2 files found on iOS, macOS etc."
-__contact__ = "Alex Caithness"
+from .ccl_segb_common import MAGIC, MAGIC_SIZE, EntryState, decode_cocoa_time
 
-HEADER_LENGTH = 32
-ENTRY_HEADER_LENGTH = 8
-TRAILER_ENTRY_LENGTH = 16
-MAGIC = b"SEGB"
+# SEGB v2 File Format Constants (introduced in iOS 17)
+# Structure: [32-byte Header][Entries with 8-byte headers + data + 4-byte alignment][16-byte Trailers]
+# Key difference from v1: Trailer section at end, smaller headers, different alignment
+HEADER_LENGTH = 32            # File header size containing magic, entry count, timestamp
+ENTRY_HEADER_LENGTH = 8       # Each entry's header: CRC and unknown value
+TRAILER_ENTRY_LENGTH = 16     # Trailer metadata at end of file: offset, state, creation time
+ALIGNMENT_BYTES = 4           # Entries padded to 4-byte boundaries (different from v1's 8-byte)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -65,7 +65,7 @@ class Segb2Entry:
     _unknown_value: int = dataclasses.field(kw_only=True, compare=False)
 
     @property
-    def timestamp1(self) -> datetime:
+    def timestamp1(self) -> datetime.datetime:
         return self.metadata.creation
 
     @property
@@ -89,7 +89,7 @@ def stream_matches_segbv2_signature(stream: typing.BinaryIO) -> bool:
     file_header = stream.read(HEADER_LENGTH)
     stream.seek(reset_offset, os.SEEK_SET)
 
-    if len(file_header) != HEADER_LENGTH or file_header[0:4] != MAGIC:
+    if len(file_header) != HEADER_LENGTH or file_header[0:MAGIC_SIZE] != MAGIC:
         return False
 
     return True
@@ -112,16 +112,16 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
     """
     Reads SEGB v2 data from a stream and yields an iterable of Segb2Entry objects
     :param stream: a binary stream containing the SEGB data. The data is assumed to begin at the start of the stream
-    :return: an iterable of Segb1Entry objects
+    :return: an iterable of Segb2Entry objects
     """
     trailer_list: list[EntryMetadata] = []
 
     header_raw = stream.read(HEADER_LENGTH)
+    # Parse 32-byte header: <4sid16s = little-endian: 4-byte string, int(4), double(8), 16-byte string
     magic_number, entries_count, creation_timestamp_raw, unknown_padding = struct.unpack("<4sid16s", header_raw)
     if magic_number != MAGIC:
         raise ValueError(f"Unexpected file magic. Expected: {MAGIC.hex()}; got: {magic_number.hex()}")
 
-    creation_date = decode_cocoa_time(creation_timestamp_raw)  # nothing done with this at the moment...
 
     # To read the trailer we can just calculate its size and seek from end:
     trailer_reverse_offset = TRAILER_ENTRY_LENGTH * entries_count
@@ -130,6 +130,7 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
     for _ in range(entries_count):
         meta_offset = stream.tell()
         trailer_entry_raw = stream.read(TRAILER_ENTRY_LENGTH)
+        # Parse 16-byte trailer: <2id = little-endian: 2-byte int, int(4), double(8)
         entry_end_offset, entry_state_raw, entry_timestamp_raw = struct.unpack("<2id", trailer_entry_raw)
         try:
             entry_state = EntryState(entry_state_raw)
@@ -151,7 +152,7 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
         entry_offset = stream.tell()
 
         # State 4 is an empty record
-        if trailer_entry.state == 4:
+        if trailer_entry.state == EntryState.Empty:
             continue
 
         # Two trailer entries can share an end offset (e.g. a record that was
@@ -173,11 +174,11 @@ def read_segb2_stream(stream: typing.BinaryIO) -> typing.Iterable[Segb2Entry]:
         entry_raw = stream.read(entry_length)
         data = entry_raw[ENTRY_HEADER_LENGTH:]
         crc32_stored, unknown_raw = struct.unpack("Ii", entry_raw[:ENTRY_HEADER_LENGTH])
-        crc32_calculated = calculated_crc = zlib.crc32(data)
+        calculated_crc = zlib.crc32(data)
 
         # align to 4 bytes
-        if (remainder := trailer_entry.end_offset % 4) != 0:
-            stream.seek(4 - remainder, os.SEEK_CUR)
+        if (remainder := trailer_entry.end_offset % ALIGNMENT_BYTES) != 0:
+            stream.seek(ALIGNMENT_BYTES - remainder, os.SEEK_CUR)
 
         previous_entry = Segb2Entry(trailer_entry, entry_offset, crc32_stored, calculated_crc, data, _unknown_value=unknown_raw)
         yield previous_entry
@@ -187,34 +188,9 @@ def read_segb2_file(path: pathlib.Path | os.PathLike | str) -> typing.Iterable[S
     """
     Reads SEGB v2 data from a file and yields an iterable of Segb2Entry objects
     :param path: the path of the file to be opened
-    :return: an iterable of Segb1Entry objects
+    :return: an iterable of Segb2Entry objects
     """
     path = pathlib.Path(path)
     with path.open("rb") as f:
         yield from read_segb2_stream(f)
 
-
-def run_command(file_path: pathlib.Path | os.PathLike | str):
-    for record in read_segb2_file(file_path):
-        print("=" * 72)
-        print(f"Offset: {record.data_start_offset}")
-        print(f"Creation Timestamp: {record.metadata.creation}")
-        print(f"State: {record.metadata.state.name}")
-        if record.metadata.state == 1:
-            print(f"CRC Passed: {'True' if record.crc_passed else 'False'}")
-        print()
-        print(bytes_to_hexview(record.data))
-        print()
-    print("End of records")
-
-
-if __name__ == '__main__':
-    import sys
-
-    if len(sys.argv) < 2:
-        print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <SEGB2 file>")
-        print()
-        exit(1)
-
-    run_command(sys.argv[1])
-    print()
